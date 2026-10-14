@@ -1,0 +1,83 @@
+version: '3.8'
+
+# Alternative multi-container setup with dedicated worker, beat, and redis containers
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: deribit_db_ms
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-deribit_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deribit_password}
+      POSTGRES_DB: ${POSTGRES_DB:-deribit_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_ms_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-deribit_user} -d ${POSTGRES_DB:-deribit_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: deribit_redis_ms
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  web:
+    build: .
+    container_name: deribit_web_ms
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      APP_MODE: web
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-deribit_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deribit_password}
+      POSTGRES_DB: ${POSTGRES_DB:-deribit_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: .
+    container_name: deribit_worker_ms
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      APP_MODE: worker
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-deribit_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deribit_password}
+      POSTGRES_DB: ${POSTGRES_DB:-deribit_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  beat:
+    build: .
+    container_name: deribit_beat_ms
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+    environment:
+      APP_MODE: beat
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+volumes:
+  postgres_ms_data:

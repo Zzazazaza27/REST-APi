@@ -1,0 +1,33 @@
+image: python:3.11-slim
+
+stages:
+  - test
+  - build
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+
+before_script:
+  - apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev
+  - python -m pip install --upgrade pip
+  - pip install -r requirements.txt
+
+test:
+  stage: test
+  script:
+    - pytest -v --tb=short
+
+docker-build-check:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  before_script: []
+  script:
+    - docker build -t deribit-tracker:latest .
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
